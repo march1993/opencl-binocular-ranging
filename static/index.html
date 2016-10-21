@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>毕业设计</title>
+<style>
+canvas {
+}
+body {
+	margin-top: 64px;
+	text-align: center;
+}
+</style>
+<script type="text/javascript" src="./findLineByLeastSquares.js"></script>
+<script type="text/javascript" src="./community.js"></script>
+<script type="text/javascript" src="./color.js"></script>
+</head>
+<body>
+
+<script type="text/javascript">
+'use strict';
+
+const GET = url => {
+	url = url + `?t=${+ new Date}`;
+	let xhr = new XMLHttpRequest();
+	xhr.open('GET', url, false);
+	xhr.send(null);
+	let response = xhr.responseText;
+	try {
+		var json = JSON.parse(response);
+		return json;
+	} catch (e) {
+		return response;
+	}
+};
+const BIN = (url, callback) => {
+	url = url + `?t=${+ new Date}`;
+	let xhr = new XMLHttpRequest();
+	xhr.responseType = 'arraybuffer';
+	xhr.open('GET', url, true);
+	xhr.onload = _ => {
+		let response = xhr.response;
+		callback(new Uint8Array(response));
+	};
+	xhr.send(null);
+};
+
+let canvas_offset;
+const make_canvas = _ => {
+	// get config by left
+	let config = GET('/config/' + 'left');
+	let width = config.width,
+		height = config.height;
+	canvas_offset = {
+		left: 0,
+		right: width
+	};
+	console.log(config);
+	let canvas = document.createElement('canvas');
+	document.body.appendChild(canvas);
+	canvas.id = 'canvas';
+	canvas.height = height;
+	canvas.style.height = canvas.height + 'px';
+	canvas.width = width * 2;
+	canvas.style.width = canvas.width + 'px';
+	let ctx = canvas.getContext('2d');
+	let image = ctx.createImageData(width, height);
+
+	const make_promise = camera => new Promise((resolve, reject) =>
+		BIN('/snapshot/' + camera, bin => {
+			for (let i = 0; i < width * height; i++) {
+				image.data[i * 4 + 0] =
+				image.data[i * 4 + 1] =
+				image.data[i * 4 + 2] = bin[2 * i];
+				image.data[i * 4 + 3] = 0xff;
+			}
+			ctx.putImageData(image, canvas_offset[camera], 0);
+
+			let t_delta = + new Date() - t_begin;
+			let p = document.createElement('p');
+			p.innerText = `Fetched '${camera}' image: ${t_delta} ms`;
+			document.body.appendChild(p);
+
+			resolve();
+		})
+	);
+
+	return make_promise('left').then((onResolved, onRejected) => make_promise('right'));
+};
+
+const make_keypoints = camera => {
+	let t_delta = + new Date() - t_begin;
+	let p = document.createElement('p');
+	p.innerText = `Calculated ${camera} keypoints ${t_delta} ms`;
+	document.body.appendChild(p);
+
+	let keypoints = GET('/keypoints/' + camera);
+	let canvas = document.getElementById('canvas');
+	let ctx = canvas.getContext('2d');
+	ctx.strokeStyle = '#a349a4';
+
+	keypoints.forEach(point => {
+		ctx.beginPath();
+		ctx.arc(canvas_offset[camera] + point.x, point.y, 3, 0, Math.PI * 2);
+		ctx.stroke();
+	});
+
+	// tick();
+};
+
+const make_matches = _ => {
+	let matches = GET('/matches');
+
+	let t_delta = + new Date() - t_begin;
+	let p = document.createElement('p');
+	p.innerText = `Fetched matches(${matches.length}): ${t_delta} ms`;
+	document.body.appendChild(p);
+
+	let canvas = document.getElementById('canvas');
+	let ctx = canvas.getContext('2d');
+	ctx.strokeStyle = '#a349a4';
+
+	// draw matches
+	if (false)
+	matches.forEach(match => {
+		ctx.beginPath();
+		ctx.moveTo(match['left_x'], match['left_y']);
+		ctx.lineTo(match['right_x'] + canvas_offset.right, match['right_y']);
+		ctx.stroke();
+	});
+
+	let communities = find_communities(matches);
+
+	// draw connections
+	if (false)
+	matches.forEach(match => {
+		ctx.strokeStyle = get_color();
+		match.neighbour.forEach(near => {
+			ctx.beginPath();
+			ctx.moveTo(match['left_x'], match['left_y']);
+			ctx.lineTo(near['left_x'], near['left_y']);
+			ctx.stroke();
+		});
+	});
+
+	// Draw keypoints
+	if (false)
+	matches.forEach(match => {
+		ctx.strokeStyle = get_color();
+		ctx.beginPath();
+		ctx.arc(match.left_x, match.left_y, 3, 0, Math.PI * 2);
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.arc(match.right_x + canvas_offset.right, match.right_y, 3, 0, Math.PI * 2);
+		ctx.stroke();
+	});
+
+
+	const K = 400;
+
+	ctx.font = "20px Arial";
+	ctx.textAlign = 'center'; //文本水平对齐方式
+	ctx.textBaseline = 'middle'; //文本垂直方向，基线位置
+
+	for (let id in communities) {
+		let community = communities[id];
+
+		ctx.strokeStyle = get_color();
+		ctx.fillStyle = ctx.strokeStyle;
+
+		for (let i = 0; i < community.length; i++) {
+			let
+				from = community[i],
+				to = community[(i + 1) % community.length];
+
+				ctx.beginPath();
+				// ctx.moveTo(from['left_x'], from['left_y']);
+				// ctx.lineTo(to['left_x'], to['left_y']);
+
+				ctx.moveTo(from['right_x'] + canvas_offset.right, from['right_y']);
+				// ctx.lineTo(to['right_x'] + canvas_offset.right, to['right_y']);
+				ctx.lineTo(from['right_x'] - from['delta_x'] + canvas_offset.right, from['right_y'] - from['delta_y']);
+				ctx.stroke();
+		}
+
+		let
+			avg_x = community.map(i => i.left_x).reduce((a, b) => a + b, 0) / community.length,
+			avg_y = community.map(i => i.left_y).reduce((a, b) => a + b, 0) / community.length,
+			avg_delta_x = community.avg_delta_x;
+
+		let distance = - K / avg_delta_x;
+		let text = distance.toFixed(1) + 'm';
+		ctx.fillText(text, avg_x, avg_y);
+	}
+
+	window.matches = matches;
+};
+
+
+let t_begin = + new Date();
+make_canvas().then(onResolved => {
+	// make_keypoints('left');
+	// make_keypoints('right');
+
+	make_matches();
+});
+
+
+// setTimeout(_=>location.reload(), 1000)
+</script>
+</body>
+</html>

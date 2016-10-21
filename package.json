@@ -1,0 +1,26 @@
+{
+  "name": "xyd120",
+  "version": "1.0.0",
+  "description": "abschlussarbeit",
+  "main": "index.js",
+  "scripts": {
+    "test": "test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@git.coding.net:march1993/xyd120.git"
+  },
+  "keywords": [
+    "sift",
+    "complex",
+    "network",
+    "opencl"
+  ],
+  "author": "march511@gmail.com",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.13.4",
+    "nooocl": "^0.11.1",
+    "v4l2camera": "^1.0.2"
+  }
+}
